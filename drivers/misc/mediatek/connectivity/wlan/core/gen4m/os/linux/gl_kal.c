@@ -4179,7 +4179,7 @@ void kalProcessTxReq(struct GLUE_INFO *prGlueInfo,
 	uint32_t u4CmdCount = 0;
 #endif
 	uint32_t u4TxLoopCount;
-	uint32_t u4SeleneTxWalk;
+	uint32_t u4TxWalk;
 
 	/* for spin lock acquire and release */
 	GLUE_SPIN_LOCK_DECLARATION();
@@ -4223,12 +4223,11 @@ void kalProcessTxReq(struct GLUE_INFO *prGlueInfo,
 
 			kalTraceBegin("Move TxQueue %d", prTempQue->u4NumElem);
 			/* Handle Packet Tx */
-			u4SeleneTxWalk = 0;
+			u4TxWalk = 0;
 			while (QUEUE_IS_NOT_EMPTY(prTempQue)) {
-				/* selene v19: cyclic queue hangs main_thread.
-				 * Bail out loudly past 4096. */
-				if (++u4SeleneTxWalk > 4096) {
-					pr_warn("selene: TX temp queue walk >4096, likely cyclic -> abort\n");
+				/* Guard against a cyclic Tx queue. */
+				if (++u4TxWalk > 4096) {
+					pr_warn("wlan: TX temp queue walk >4096, likely cyclic\n");
 					break;
 				}
 				QUEUE_REMOVE_HEAD(prTempQue, prQueueEntry,
@@ -4636,119 +4635,6 @@ int rx_thread(void *data)
  */
 /*----------------------------------------------------------------------------*/
 
-/* selene v18: external stall monitor. Runs in its own kthread so
- * single-pass stalls (stuck inside one loop iteration, e.g. a
- * corrupt scan-list walk - invisible to in-loop counters) are caught.
- * Fires only on: main_thread in R state for 60s straight AND zero
- * TX/RX progress (legit load always moves a counter; idle threads
- * sleep). Rate-limited to 5min. pr_warn = visible in dmesg.
- */
-static struct task_struct *g_prSeleneMonThread;
-char g_cSeleneStage = '?';
-unsigned long g_ulSeleneStageSince;
-uint8_t g_ucSeleneSubtype;
-uint8_t g_ucSeleneIeId;
-uint8_t g_ucSeleneIeLen;
-unsigned long g_ulSeleneIeIter;
-static void *g_pvSeleneOidFn;
-
-static int selene_mon_thread(void *data)
-{
-	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *) data;
-	struct net_device *dev = prGlueInfo->prDevHandler;
-	struct task_struct *prMain = NULL;
-	int iMainPid = 0;
-	unsigned long ulLastRx;
-	unsigned long ulLastIters;
-	unsigned long ulHbIters, ulHbTx, ulHbRx;
-	int iFrozen = 0;
-	int iPolls = 0;
-	int iR = 0;
-
-	ulLastRx = dev->stats.rx_packets;
-	ulLastIters = prGlueInfo->ulSpinBusySince;
-	ulHbIters = ulLastIters;
-	ulHbTx = dev->stats.tx_packets;
-	ulHbRx = ulLastRx;
-
-	while (!kthread_should_stop()) {
-		if (msleep_interruptible(5000))
-			break;
-		iPolls++;
-		/* selene v22: driver may reload under us (FW recovery
-		 * recreates threads/glue). Re-anchor every poll and
-		 * rebase baselines when the main thread changes.
-		 */
-		prGlueInfo = wlanGetGlueInfo();
-		if (!prGlueInfo) {
-			iFrozen = 0;
-			continue;
-		}
-		dev = prGlueInfo->prDevHandler;
-		prMain = prGlueInfo->main_thread;
-		if (prMain && prMain->pid != iMainPid) {
-			iMainPid = prMain->pid;
-			iFrozen = 0;
-			iR = 0;
-			ulLastIters = prGlueInfo->ulSpinBusySince;
-			ulLastRx = dev->stats.rx_packets;
-			ulHbIters = ulLastIters;
-			ulHbTx = dev->stats.tx_packets;
-			ulHbRx = ulLastRx;
-			pr_warn("selene: mon re-anchored to main_thread pid %d\n",
-			       iMainPid);
-		}
-		if (prMain && prMain->state == TASK_RUNNING) {
-			iR++;
-			if (prGlueInfo->ulSpinBusySince == ulLastIters &&
-			    dev->stats.rx_packets == ulLastRx) {
-				if (++iFrozen >= 12 &&
-				    time_after(jiffies,
-					       prGlueInfo->ulTxStuckLastReset +
-				       300 * HZ)) {
-					pr_warn("selene: main_thread R 60s, iters %lu rx %lu frozen -> chip reset\n",
-					       ulLastIters, ulLastRx);
-					GL_RESET_TRIGGER(prGlueInfo->prAdapter,
-						 RST_FLAG_CHIP_RESET);
-					prGlueInfo->ulTxStuckLastReset = jiffies;
-					iFrozen = 0;
-				}
-			} else {
-				iFrozen = 0;
-				ulLastIters = prGlueInfo->ulSpinBusySince;
-				ulLastRx = dev->stats.rx_packets;
-			}
-		} else {
-			iFrozen = 0;
-			ulLastIters = prGlueInfo->ulSpinBusySince;
-			ulLastRx = dev->stats.rx_packets;
-		}
-		if (iPolls >= 12) {
-			pr_warn("selene: mon hb iters=%lu(+%lu) tx=%lu(+%lu) rx=%lu(+%lu) R=%d/12 stage=%c(%lus) oid=%ps sub=%u ie=%u/%u#%lu\n",
-			       prGlueInfo->ulSpinBusySince,
-			       prGlueInfo->ulSpinBusySince - ulHbIters,
-			       dev->stats.tx_packets,
-			       dev->stats.tx_packets - ulHbTx,
-			       dev->stats.rx_packets,
-			       dev->stats.rx_packets - ulHbRx, iR,
-			       g_cSeleneStage,
-			       (jiffies - g_ulSeleneStageSince) / HZ,
-			       g_pvSeleneOidFn,
-			       g_ucSeleneSubtype,
-			       g_ucSeleneIeId,
-			       g_ucSeleneIeLen,
-			       g_ulSeleneIeIter);
-			iPolls = 0;
-			iR = 0;
-			ulHbIters = prGlueInfo->ulSpinBusySince;
-			ulHbTx = dev->stats.tx_packets;
-			ulHbRx = dev->stats.rx_packets;
-		}
-	}
-
-	return 0;
-}
-
 int main_thread(void *data)
 {
 	struct net_device *dev = data;
@@ -4789,18 +4675,6 @@ int main_thread(void *data)
 	       KAL_GET_CURRENT_THREAD_NAME(), KAL_GET_CURRENT_THREAD_ID());
 
 	rtc_update = jiffies;	/* update rtc_update time base */
-	/* selene TX-stall watchdog init (LastReset=0 blocks auto-reset
-	 * before 5min uptime) */
-	prGlueInfo->ulTxStuckLastTx = dev->stats.tx_packets;
-	prGlueInfo->ulTxStuckSince = jiffies;
-	prGlueInfo->ulTxStuckLastReset = 0;
-	prGlueInfo->ulSpinBusySince = 0;
-	if (!g_prSeleneMonThread) {
-		g_prSeleneMonThread = kthread_run(selene_mon_thread,
-			prGlueInfo, "selene_mon");
-		if (IS_ERR(g_prSeleneMonThread))
-			g_prSeleneMonThread = NULL;
-	}
 
 	while (TRUE) {
 #ifdef UT_TEST_MODE
@@ -4832,45 +4706,11 @@ int main_thread(void *data)
 		 * (1) GLUE_FLAG_INT (2) GLUE_FLAG_OID (3) GLUE_FLAG_TXREQ
 		 * (4) GLUE_FLAG_HALT
 		 */
-		g_cSeleneStage = 'W';
-		g_ulSeleneStageSince = jiffies;
 		do {
 			ret = wait_event_interruptible(prGlueInfo->waitq,
 				((prGlueInfo->ulFlag & GLUE_FLAG_MAIN_PROCESS)
 				!= 0));
 		} while (ret != 0);
-		g_cSeleneStage = 'E';
-		g_ulSeleneStageSince = jiffies;
-
-		/* selene wedge watchdog (v17): counts loop iterations per 60s
-		 * window. A healthy event-driven thread iterates at most hundreds
-		 * of times per window (it sleeps between events); streaming or
-		 * scan bursts always advance TX or stay far below threshold.
-		 * 200k+ iterations with zero TX completions means livelock
-		 * (TX storm, RX/scan storm, stuck flags - any flavor) => chip
-		 * reset, rate-limited to 5min. pr_warn so it is visible in
-		 * dmesg (DBGLOG is compiled out in this build).
-		 */
-		if (time_after(jiffies, prGlueInfo->ulTxStuckSince + 60 * HZ)) {
-			if (prGlueInfo->ulSpinBusySince > 200000 &&
-			    dev->stats.tx_packets ==
-			    prGlueInfo->ulTxStuckLastTx &&
-			    time_after(jiffies,
-				       prGlueInfo->ulTxStuckLastReset +
-				       300 * HZ)) {
-				pr_warn("selene: main_thread wedge 60s: %lu iters, tx %lu frozen -> chip reset\n",
-				       prGlueInfo->ulSpinBusySince,
-				       dev->stats.tx_packets);
-				prGlueInfo->ulTxStuckLastReset = jiffies;
-				GL_RESET_TRIGGER(prGlueInfo->prAdapter,
-						 RST_FLAG_CHIP_RESET);
-			}
-			prGlueInfo->ulTxStuckSince = jiffies;
-			prGlueInfo->ulTxStuckLastTx = dev->stats.tx_packets;
-			prGlueInfo->ulSpinBusySince = 0;
-		} else {
-			prGlueInfo->ulSpinBusySince++;
-		}
 #if defined(CONFIG_ANDROID) && (CFG_ENABLE_WAKE_LOCK)
 		if (!KAL_WAKE_LOCK_ACTIVE(prGlueInfo->prAdapter,
 					  prTxThreadWakeLock))
@@ -5003,12 +4843,9 @@ int main_thread(void *data)
 #ifdef UT_TEST_MODE
 		testProcessOid(prGlueInfo->prAdapter);
 #endif
-		g_cSeleneStage = 'O';
-		g_ulSeleneStageSince = jiffies;
 		if (test_and_clear_bit(GLUE_FLAG_OID_BIT,
 				       &prGlueInfo->ulFlag)) {
 			kalTraceBegin("OID");
-			g_pvSeleneOidFn = prGlueInfo->OidEntry.pfnOidHandler;
 			/* get current prIoReq */
 			prIoReq = &(prGlueInfo->OidEntry);
 			DBGLOG(NIC, TRACE, "fgRead=%u, pfnOidHandler=%ps",
@@ -5066,17 +4903,10 @@ int main_thread(void *data)
 		testProcessTxReq(prGlueInfo->prAdapter);
 #endif
 
-		g_cSeleneStage = 'T';
-		g_ulSeleneStageSince = jiffies;
 		if (test_and_clear_bit(GLUE_FLAG_TXREQ_BIT,
 				       &prGlueInfo->ulFlag))
 			TRACE(kalProcessTxReq(prGlueInfo, &fgNeedHwAccess),
 				"TXREQ");
-
-
-		/* (v17: TX-only watchdog removed; superseded by the windowed
-		 * wedge detector above, which also covers RX/scan storms and
-		 * survives long blocking waits.) */
 
 #if CFG_SUPPORT_MULTITHREAD
 		/* Process RX */
@@ -5084,20 +4914,14 @@ int main_thread(void *data)
 		testProcessRFBs(prGlueInfo->prAdapter);
 #endif
 
-		g_cSeleneStage = 'R';
-		g_ulSeleneStageSince = jiffies;
 		if (test_and_clear_bit(GLUE_FLAG_RX_BIT,
 				       &prGlueInfo->ulFlag))
 			TRACE(nicRxProcessRFBs(prGlueInfo->prAdapter), "RX");
-		g_cSeleneStage = 'X';
-		g_ulSeleneStageSince = jiffies;
 
 		if (test_and_clear_bit(GLUE_FLAG_TX_CMD_DONE_BIT,
 				       &prGlueInfo->ulFlag))
 			TRACE(wlanTxCmdDoneMthread(prGlueInfo->prAdapter),
 				"TX_CMD");
-		g_cSeleneStage = 'C';
-		g_ulSeleneStageSince = jiffies;
 #endif
 
 		/* Process RX, In linux, we don't need to free sk_buff by
@@ -5194,12 +5018,6 @@ int main_thread(void *data)
 		kalDumpPwrLevel(prGlueInfo->prAdapter);
 #endif
 
-		/* Yield when TXREQ/TIMEOUT/RX flags re-fire back-to-back so a
-		 * stuck firmware/HIF cannot livelock the CPU (100% main_thread)
-		 * and starve rtnl/wificond (setWifiEnabled timeout).
-		 */
-		cond_resched();
-
 		kalTraceEnd(); /* main_thread */
 	}
 
@@ -5239,10 +5057,6 @@ int main_thread(void *data)
 	}
 #endif
 
-	if (g_prSeleneMonThread) {
-		kthread_stop(g_prSeleneMonThread);
-		g_prSeleneMonThread = NULL;
-	}
 	prGlueInfo->main_thread = NULL;
 	prGlueInfo->u4TxThreadPid = 0xffffffff;
 

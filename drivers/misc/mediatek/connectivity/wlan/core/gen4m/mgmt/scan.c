@@ -20,11 +20,6 @@
  *******************************************************************************
  */
 #include "precomp.h"
-extern char g_cSeleneStage;
-extern unsigned long g_ulSeleneStageSince;
-extern uint8_t g_ucSeleneIeId;
-extern uint8_t g_ucSeleneIeLen;
-extern unsigned long g_ulSeleneIeIter;
 
 /*******************************************************************************
  *                              C O N S T A N T S
@@ -616,7 +611,7 @@ scanSearchBssDescByBssidAndSsid(IN struct ADAPTER *prAdapter,
 	struct LINK *prBSSDescList;
 	struct BSS_DESC *prBssDesc;
 	struct BSS_DESC *prDstBssDesc = (struct BSS_DESC *) NULL;
-	uint32_t u4SeleneScanWalk = 0;
+	uint32_t u4BssWalk = 0;
 
 	ASSERT(prAdapter);
 	ASSERT(aucBSSID);
@@ -628,12 +623,10 @@ scanSearchBssDescByBssidAndSsid(IN struct ADAPTER *prAdapter,
 	/* Search BSS Desc from current SCAN result list. */
 	LINK_FOR_EACH_ENTRY(prBssDesc, prBSSDescList,
 		rLinkEntry, struct BSS_DESC) {
-		/* selene v18: a corrupt/cyclic BSS list hangs main_thread
-		 * at 100% with frozen TX. A legit list is dozens long;
-		 * bail out loudly past 512 entries.
-		 */
-		if (++u4SeleneScanWalk > 512) {
-			pr_warn("selene: BSS list walk >512, likely cyclic -> abort search\n");
+		/* Guard against a corrupt/cyclic BSS list; a sane list
+		 * holds dozens of entries. */
+		if (++u4BssWalk > 512) {
+			pr_warn("wlan: BSS list walk >512, likely cyclic\n");
 			break;
 		}
 
@@ -1635,9 +1628,11 @@ void scanParsingRnrElement(IN struct ADAPTER *prAdapter,
 			/* only support neighbor AP info with
 			*  BSSID
 			*/
-			/* selene v30: unsupported TBTT length must still advance,
-			 * else the while loop spins forever on this entry. */
-			ucCurrentLength += 4 + (u2TbttInfoCount * u2TbttInfoLength);
+			/* Unsupported neighbor type: advance the offset,
+			 * otherwise this loop never terminates.
+			 */
+			ucCurrentLength += 4 +
+				(u2TbttInfoCount * u2TbttInfoLength);
 			continue;
 		}
 		/* If opClass is not 6G, no need to do extra scan
@@ -2007,7 +2002,6 @@ struct BSS_DESC *scanAddToBssDesc(IN struct ADAPTER *prAdapter,
 		/*TODO */
 #endif
 
-	g_cSeleneStage = 'B', g_ulSeleneStageSince = jiffies;
 	ASSERT(prAdapter);
 	ASSERT(prSwRfb);
 	prRxDescOps = prAdapter->chip_info->prRxDescOps;
@@ -2064,7 +2058,6 @@ struct BSS_DESC *scanAddToBssDesc(IN struct ADAPTER *prAdapter,
 	}
 	kalMemZero(&rSsid, sizeof(rSsid));
 	IE_FOR_EACH(pucIE, u2IELength, u2Offset) {
-		g_ucSeleneIeId = IE_ID(pucIE), g_ucSeleneIeLen = IE_LEN(pucIE), g_ulSeleneIeIter++;
 		/* Error handling for disorder IE that IE length is 0 */
 		if (IE_ID(pucIE) != ELEM_ID_SSID && IE_LEN(pucIE) == 0)
 			continue;
@@ -2170,6 +2163,7 @@ struct BSS_DESC *scanAddToBssDesc(IN struct ADAPTER *prAdapter,
 		(uint8_t *) prWlanBeaconFrame->aucBSSID,
 		(uint8_t *) prWlanBeaconFrame->aucSrcAddr,
 		fgIsValidSsid, fgIsValidSsid == TRUE ? &rSsid : NULL);
+
 	ucChnlNum = prSwRfb->ucChnlNum;
 #if (CFG_SUPPORT_WIFI_6G == 1)
 	nicRxdChNumTranslate(eHwBand, &ucChnlNum);
@@ -2189,7 +2183,6 @@ struct BSS_DESC *scanAddToBssDesc(IN struct ADAPTER *prAdapter,
 
 	if (prBssDesc == (struct BSS_DESC *) NULL) {
 		fgIsNewBssDesc = TRUE;
-		g_cSeleneStage = 'A', g_ulSeleneStageSince = jiffies;
 
 		do {
 			/* 4 <1.2.1> First trial of allocation */
@@ -2318,8 +2311,6 @@ struct BSS_DESC *scanAddToBssDesc(IN struct ADAPTER *prAdapter,
 		}
 	}
 
-	g_cSeleneStage = 'F', g_ulSeleneStageSince = jiffies;
-	g_cSeleneStage = '1', g_ulSeleneStageSince = jiffies;
 	prBssDesc->u2RawLength = prSwRfb->u2PacketLen;
 	if (prBssDesc->u2RawLength > CFG_RAW_BUFFER_SIZE) {
 		prBssDesc->u2RawLength = CFG_RAW_BUFFER_SIZE;
@@ -2367,7 +2358,6 @@ struct BSS_DESC *scanAddToBssDesc(IN struct ADAPTER *prAdapter,
 		prBssDesc->fgIsIEOverflow = FALSE;
 	}
 	prBssDesc->u2IELength = u2IELength;
-	g_cSeleneStage = '2', g_ulSeleneStageSince = jiffies;
 
 	if (fgIsProbeResp || fgIsValidSsid) {
 		kalMemCopy(prBssDesc->aucIEBuf, prWlanBeaconFrame->aucInfoElem,
@@ -2431,13 +2421,11 @@ struct BSS_DESC *scanAddToBssDesc(IN struct ADAPTER *prAdapter,
 			MAC2STR(prBssDesc->aucBSSID));
 	}
 
-	g_cSeleneStage = 'U', g_ulSeleneStageSince = jiffies;
 	/* 4 <3.1> Full IE parsing on SW_RFB_T */
 	pucIE = prWlanBeaconFrame->aucInfoElem;
 	/* pucDumpIE = pucIE; */
 
 	IE_FOR_EACH(pucIE, u2IELength, u2Offset) {
-		g_ucSeleneIeId = IE_ID(pucIE), g_ucSeleneIeLen = IE_LEN(pucIE), g_ulSeleneIeIter++;
 		/* Error handling for disorder IE that IE length is 0*/
 		if (IE_ID(pucIE) != ELEM_ID_SSID && IE_LEN(pucIE) == 0)
 			continue;
@@ -3002,7 +2990,6 @@ struct BSS_DESC *scanAddToBssDesc(IN struct ADAPTER *prAdapter,
 #endif
 	}
 
-	g_cSeleneStage = 'Y', g_ulSeleneStageSince = jiffies;
 	/* 4 <5> Check IE information corret or not */
 	if (!rlmDomainIsValidRfSetting(prAdapter, prBssDesc->eBand,
 				       prBssDesc->ucChannelNum, prBssDesc->eSco,
@@ -3463,7 +3450,6 @@ uint32_t scanProcessBeaconAndProbeResp(IN struct ADAPTER *prAdapter,
 #endif
 	uint32_t u4Idx = 0;
 
-	g_cSeleneStage = 'J', g_ulSeleneStageSince = jiffies;
 	ASSERT(prAdapter);
 	ASSERT(prSwRfb);
 
@@ -5035,7 +5021,6 @@ void scanCheckEpigramVhtIE(IN uint8_t *pucBuf, IN struct BSS_DESC *prBssDesc)
 
 	pucIE = prEpiIE->pucData;
 	IE_FOR_EACH(pucIE, u2IELength, u2Offset) {
-		g_ucSeleneIeId = IE_ID(pucIE), g_ucSeleneIeLen = IE_LEN(pucIE), g_ulSeleneIeIter++;
 		switch (IE_ID(pucIE)) {
 		case ELEM_ID_VHT_CAP:
 			scanParseVHTCapIE(pucIE, prBssDesc);
