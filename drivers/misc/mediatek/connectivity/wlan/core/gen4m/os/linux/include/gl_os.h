@@ -652,6 +652,14 @@ struct GLUE_INFO {
 	int32_t i4TxPendingSecurityFrameNum;
 	int32_t i4TxPendingCmdNum;
 
+	/* selene TX-stall watchdog (livelock recovery) */
+	unsigned long ulTxStuckLastTx;
+	unsigned long ulTxStuckSince;
+	unsigned long ulTxStuckLastReset;
+	/* selene spin watchdog: jiffies when current busy (no-sleep)
+	 * streak started. */
+	unsigned long ulSpinBusySince;
+
 	/* Tx: for NetDev to BSS index mapping */
 	struct NET_INTERFACE_INFO arNetInterfaceInfo[MAX_BSSID_NUM];
 

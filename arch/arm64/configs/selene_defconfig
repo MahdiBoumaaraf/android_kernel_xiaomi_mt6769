@@ -1,6 +1,6 @@
 # CONFIG_FHANDLE is not set
 CONFIG_IKHEADERS=m
-CONFIG_LOG_BUF_SHIFT=19
+CONFIG_LOG_BUF_SHIFT=21
 CONFIG_UCLAMP_TASK=y
 CONFIG_UCLAMP_GROUPS_COUNT=32
 CONFIG_UCLAMP_MAP_OPP=y
@@ -502,7 +502,7 @@ CONFIG_XDP_SOCKETS=y
 
 CONFIG_NOMOUNT=y
 CONFIG_CRYPTO_ZSTD=y
-CONFIG_LOCALVERSION="-Blissxdp-2026.09.24-s"
+CONFIG_LOCALVERSION="-Blissxdp-2026.09.26-s"
 # CONFIG_LOCALVERSION_AUTO is not set
 
 # --- KernelSU-Next (v3.3.0-legacy-susfs) ---
@@ -521,7 +521,7 @@ CONFIG_KSU_SUSFS_SPOOF_UNAME=y
 CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
 CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
 CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-CONFIG_KSU_SUSFS_ENABLE_LOG=y
+# CONFIG_KSU_SUSFS_ENABLE_LOG is not set
 
 # --- SquashFS ---
 CONFIG_SQUASHFS=y
@@ -541,19 +541,23 @@ CONFIG_DEFAULT_BBR=y
 CONFIG_DEFAULT_TCP_CONG="bbr"
 CONFIG_NET_SCH_FQ_CODEL=y
 
-# --- Zamanlayici tepkiselligi ---
+CONFIG_SECURITY_SELINUX_BOOTPARAM=y
 # PELT yari omru 32 -> 16 ms: kullanim takibi ~2 kat hizli tirmaniyor,
 # schedutil ve gorev yerlestirme yuke daha cabuk tepki veriyor.
 # Tablolar agacta ZATEN vardi (kernel/sched/sched-pelt.h); yeniden
 # uretilmedi, yalnizca 16 ms olani secildi.
-# CONFIG_PELT_UTIL_HALFLIFE_32 is not set
-CONFIG_PELT_UTIL_HALFLIFE_16=y
+# NOTE (wifi fix): gen4m main_thread @ nice -10 + HZ_300 + 16ms PELT causes
+# TXREQ/TIMEOUT livelock (100% main_thread, rtnl stall). Restore stock 32ms.
+CONFIG_PELT_UTIL_HALFLIFE_32=y
+# CONFIG_PELT_UTIL_HALFLIFE_16 is not set
 
 # 250 -> 300 Hz: Android tarafinda yaygin secim.
 # Zamanlayici granuleri 4 ms -> 3,33 ms.
-# CONFIG_HZ_250 is not set
-CONFIG_HZ_300=y
-CONFIG_HZ=300
+# Stock MTK 4.14 timing: gen4m kalSetTimer/wlanTimerTimeoutCheck assume HZ=250.
+# HZ=300 + nice -10 main_thread starves wificond/rtnl (setWifiEnabled timeout).
+# CONFIG_HZ_300 is not set
+CONFIG_HZ_250=y
+CONFIG_HZ=250
 
 # --- Telefonda karsiligi olmayan ozellikler ---
 # ISO9660 uzantilari: cihazda optik ortam yok.
@@ -568,3 +572,10 @@ CONFIG_HZ=300
 # Eski ALSA API uyumlulugu ve ayrintili ses procfs.
 # CONFIG_SND_SUPPORT_OLD_API is not set
 # CONFIG_SND_VERBOSE_PROCFS is not set
+
+CONFIG_SECURITY_SELINUX_BOOTPARAM=y
+
+# selene KSU fix: KSU-Next execve hook uses the sys_enter tracepoint
+# (no kprobes on this tree); without FTRACE_SYSCALLS the hook never
+# attaches, the manager never gets its [ksu_driver] fd -> Unsupported.
+CONFIG_FTRACE_SYSCALLS=y

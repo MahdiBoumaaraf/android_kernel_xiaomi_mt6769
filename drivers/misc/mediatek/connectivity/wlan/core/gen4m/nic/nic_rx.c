@@ -3681,6 +3681,8 @@ void nicRxProcessEventPacket(IN struct ADAPTER *prAdapter,
  * @return (none)
  */
 /*----------------------------------------------------------------------------*/
+extern uint8_t g_ucSeleneSubtype;
+
 void nicRxProcessMgmtPacket(IN struct ADAPTER *prAdapter,
 	IN OUT struct SW_RFB *prSwRfb)
 {
@@ -3702,6 +3704,7 @@ void nicRxProcessMgmtPacket(IN struct ADAPTER *prAdapter,
 #endif
 	ucSubtype = (*(uint8_t *) (prSwRfb->pvHeader) &
 		     MASK_FC_SUBTYPE) >> OFFSET_OF_FC_SUBTYPE;
+	g_ucSeleneSubtype = ucSubtype;
 
 #if CFG_RX_PKTS_DUMP
 	{
@@ -4005,6 +4008,10 @@ static void nicRxProcessIcsLog(IN struct ADAPTER *prAdapter,
 }
 #endif /* CFG_SUPPORT_ICS */
 
+extern char g_cSeleneStage;
+extern unsigned long g_ulSeleneStageSince;
+extern uint8_t g_ucSeleneSubtype;
+
 static void nicRxProcessPacketType(
 	struct ADAPTER *prAdapter,
 	struct SW_RFB *prSwRfb)
@@ -4020,27 +4027,33 @@ static void nicRxProcessPacketType(
 	case RX_PKT_TYPE_RX_DATA:
 		if (HAL_IS_RX_DIRECT(prAdapter)
 			&& HAL_MON_EN(prAdapter)) {
+			g_cSeleneStage = 'K', g_ulSeleneStageSince = jiffies;
 			spin_lock_bh(&prGlueInfo->rSpinLock[
 				SPIN_LOCK_RX_DIRECT]);
+			g_cSeleneStage = 'N', g_ulSeleneStageSince = jiffies;
 			nicRxProcessMonitorPacket(
 				prAdapter, prSwRfb);
 			spin_unlock_bh(&prGlueInfo->rSpinLock[
 				SPIN_LOCK_RX_DIRECT]);
 			break;
 		} else if (HAL_MON_EN(prAdapter)) {
+			g_cSeleneStage = 'N', g_ulSeleneStageSince = jiffies;
 			nicRxProcessMonitorPacket(
 				prAdapter, prSwRfb);
 			break;
 		}
 		if (HAL_IS_RX_DIRECT(prAdapter)) {
+			g_cSeleneStage = 'K', g_ulSeleneStageSince = jiffies;
 			spin_lock_bh(&prGlueInfo->rSpinLock[
 				SPIN_LOCK_RX_DIRECT]);
+			g_cSeleneStage = 'D', g_ulSeleneStageSince = jiffies;
 			nicRxProcessDataPacket(
 				prAdapter,
 				prSwRfb);
 			spin_unlock_bh(&prGlueInfo->rSpinLock[
 				SPIN_LOCK_RX_DIRECT]);
 		} else {
+			g_cSeleneStage = 'D', g_ulSeleneStageSince = jiffies;
 			nicRxProcessDataPacket(
 				prAdapter,
 				prSwRfb);
@@ -4053,6 +4066,7 @@ static void nicRxProcessPacketType(
 			prSwRfb->prRxStatus) &
 		     prChipInfo->u2RxSwPktBitMap) ==
 		    prChipInfo->u2RxSwPktEvent) {
+			g_cSeleneStage = 'E', g_ulSeleneStageSince = jiffies;
 			nicRxProcessEventPacket(
 				prAdapter,
 				prSwRfb);
@@ -4080,28 +4094,37 @@ static void nicRxProcessPacketType(
 				prSwRfb->prRxStatus);
 			if ((prSwRfb->ucOFLD) || (prSwRfb->fgHdrTran)) {
 				if (HAL_IS_RX_DIRECT(prAdapter)) {
+				g_cSeleneStage = 'K', g_ulSeleneStageSince = jiffies;
 					spin_lock_bh(&prGlueInfo->rSpinLock[
 						SPIN_LOCK_RX_DIRECT]);
-					if (HAL_MON_EN(prAdapter))
+					if (HAL_MON_EN(prAdapter)) {
+					g_cSeleneStage = 'N', g_ulSeleneStageSince = jiffies;
 						nicRxProcessMonitorPacket(
 							prAdapter, prSwRfb);
-					else
+					} else {
+					g_cSeleneStage = 'D', g_ulSeleneStageSince = jiffies;
 						nicRxProcessDataPacket(
 							prAdapter, prSwRfb);
+					}
 					spin_unlock_bh(&prGlueInfo->rSpinLock[
 						SPIN_LOCK_RX_DIRECT]);
 				} else {
-					if (HAL_MON_EN(prAdapter))
+					if (HAL_MON_EN(prAdapter)) {
+					g_cSeleneStage = 'N', g_ulSeleneStageSince = jiffies;
 						nicRxProcessMonitorPacket(
 							prAdapter, prSwRfb);
-					else
+					} else {
+					g_cSeleneStage = 'D', g_ulSeleneStageSince = jiffies;
 						nicRxProcessDataPacket(
 							prAdapter, prSwRfb);
+					}
 				}
 			}
-			else
-				nicRxProcessMgmtPacket(
+			else {
+			g_cSeleneStage = 'M', g_ulSeleneStageSince = jiffies;
+			nicRxProcessMgmtPacket(
 				prAdapter, prSwRfb);
+			}
 		} else {
 			DBGLOG(RX, ERROR,
 				"u2PktTYpe(0x%04X) is OUT OF DEF.!!!\n",
@@ -4123,11 +4146,13 @@ static void nicRxProcessPacketType(
 		break;
 
 	case RX_PKT_TYPE_MSDU_REPORT:
+			g_cSeleneStage = 'P', g_ulSeleneStageSince = jiffies;
 		nicRxProcessMsduReport(prAdapter,
 			prSwRfb);
 		break;
 
 	case RX_PKT_TYPE_RX_REPORT:
+			g_cSeleneStage = 'P', g_ulSeleneStageSince = jiffies;
 		nicRxProcessRxReport(prAdapter, prSwRfb);
 		nicRxReturnRFB(prAdapter, prSwRfb);
 		break;
@@ -4168,6 +4193,10 @@ static void nicRxProcessPacketType(
  * @return (none)
  */
 /*----------------------------------------------------------------------------*/
+extern char g_cSeleneStage;
+extern unsigned long g_ulSeleneStageSince;
+extern uint8_t g_ucSeleneSubtype;
+
 void nicRxProcessRFBs(IN struct ADAPTER *prAdapter)
 {
 	struct RX_CTRL *prRxCtrl;
@@ -4175,6 +4204,7 @@ void nicRxProcessRFBs(IN struct ADAPTER *prAdapter)
 	struct QUE rTempRfbList;
 	struct QUE *prTempRfbList = &rTempRfbList;
 	uint32_t u4RxLoopCount, u4Tick;
+	uint32_t u4SeleneRxWalk;
 
 	KAL_SPIN_LOCK_DECLARATION();
 
@@ -4193,6 +4223,14 @@ void nicRxProcessRFBs(IN struct ADAPTER *prAdapter)
 	QUEUE_INITIALIZE(prTempRfbList);
 
 	while (u4RxLoopCount--) {
+		/* selene v23: bound the whole RFB pass by wall clock so a
+		 * wedged HW path always returns to the main loop.
+		 */
+		if ((kalGetTimeTick() - u4Tick) > RX_PROCESS_TIMEOUT) {
+			pr_warn("selene: RX outer loop exceeded %u ticks -> abort pass\n",
+			       RX_PROCESS_TIMEOUT);
+			break;
+		}
 		while (QUEUE_IS_NOT_EMPTY(&prRxCtrl->rReceivedRfbList)) {
 
 			/* check process RFB timeout */
@@ -4204,12 +4242,34 @@ void nicRxProcessRFBs(IN struct ADAPTER *prAdapter)
 				break;
 			}
 
+			g_cSeleneStage = 'L';
+			g_ulSeleneStageSince = jiffies;
 			KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_QUE);
 			QUEUE_MOVE_ALL(prTempRfbList,
 				&prRxCtrl->rReceivedRfbList);
 			KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_QUE);
+			g_cSeleneStage = 'Q';
+			g_ulSeleneStageSince = jiffies;
 
+			u4SeleneRxWalk = 0;
 			while (QUEUE_IS_NOT_EMPTY(prTempRfbList)) {
+				/* selene v19: cyclic queue hangs main_thread.
+				 * Bail out loudly past 4096. */
+				if (++u4SeleneRxWalk > 4096) {
+					pr_warn("selene: RX temp queue walk >4096, likely cyclic -> abort\n");
+					break;
+				}
+				/* selene v21: bound the whole pass by wall clock
+				 * (mirrors RX_PROCESS_TIMEOUT): a wedged HW
+				 * path must return to the main loop.
+				 */
+				if ((kalGetTimeTick() - u4Tick) >
+				    RX_PROCESS_TIMEOUT) {
+					pr_warn("selene: RX pass exceeded %u ticks with %u pending -> abort pass\n",
+					       RX_PROCESS_TIMEOUT,
+					       prTempRfbList->u4NumElem);
+					break;
+				}
 				QUEUE_REMOVE_HEAD(prTempRfbList,
 					prSwRfb, struct SW_RFB *);
 
@@ -4227,6 +4287,7 @@ void nicRxProcessRFBs(IN struct ADAPTER *prAdapter)
 				nicRxProcessPacketType(prAdapter, prSwRfb);
 			}
 
+			g_cSeleneStage = 'G', g_ulSeleneStageSince = jiffies;
 			if (prRxCtrl->ucNumIndPacket > 0) {
 				RX_ADD_CNT(prRxCtrl, RX_DATA_RETAINED_COUNT,
 					   prRxCtrl->ucNumRetainedPacket);
