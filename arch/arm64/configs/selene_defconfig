@@ -579,3 +579,4 @@ CONFIG_SECURITY_SELINUX_BOOTPARAM=y
 # (no kprobes on this tree); without FTRACE_SYSCALLS the hook never
 # attaches, the manager never gets its [ksu_driver] fd -> Unsupported.
 CONFIG_FTRACE_SYSCALLS=y
+CONFIG_CPU_FREQ_MTK=y
