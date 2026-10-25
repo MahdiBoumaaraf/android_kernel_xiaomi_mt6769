@@ -470,8 +470,30 @@ static ssize_t mtkfb_set_bpoint(struct device *dev, struct device_attribute *att
 
 static ssize_t mtkfb_get_panel_info(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE,
-		"panel_name=%s\n", mtkfb_lcm_name);
+	int ret = 0;
+
+	if (strncmp(mtkfb_lcm_name, "nt36672A_fhdp_dsi_vdo_tianma_lcm_drv", 36) == 0) {
+		ret = sprintf(buf, "incell,vendor:tianma,IC:nt36672a(novatek)\n");
+	} else if (strncmp(mtkfb_lcm_name, "ft8719_fhdp_dsi_vdo_xinli_lcm_drv", 33) == 0) {
+		ret = sprintf(buf, "incell,vendor:truly,IC:ft8719(focaltech)\n");
+	} else if (strncmp(mtkfb_lcm_name, "nt36672A_fhdp_dsi_vdo_tianma_j19_lcm_drv", 40) == 0) {
+		ret = sprintf(buf, "incell,vendor:tianma,IC:nt36672(novatek)\n");
+	} else if (strncmp(mtkfb_lcm_name, "ft8719_fhdp_dsi_vdo_huaxing_j19_lcm_drv", 39) == 0) {
+		ret = sprintf(buf, "incell,vendor:huaxing,IC:ft8719(focaltech)\n");
+	} else if (strncmp(mtkfb_lcm_name, "nt36672A_fhdp_dsi_vdo_dijing_j19_lcm_drv", 40) == 0) {
+		ret = sprintf(buf, "incell,vendor:Dijing,IC:nt36672(novatek)\n");
+	} else if (strncmp(mtkfb_lcm_name, "nt36672D_fhdp_dsi_vdo_dijing_j19_lcm_drv", 40) == 0) {
+		ret = sprintf(buf, "incell,vendor:Dijing,IC:nt36672(novatek)\n");
+	} else if (strncmp(mtkfb_lcm_name, "nt36672D_fhdp_dsi_vdo_tianma_lcm_drv", 36) == 0) {
+		ret = sprintf(buf, "incell,vendor:tianma,IC:nt36672D(novatek)\n");
+	} else if (!strcmp(mtkfb_lcm_name, "dsi_panel_k19a_36_02_0a_dsc_vdo_lcm_drv") ||
+		   !strcmp(mtkfb_lcm_name, "dsi_panel_k19s_36_03_0c_dsc_vdo_lcm_drv") ||
+		   !strcmp(mtkfb_lcm_name, "dsi_panel_k19a_43_02_0b_dsc_vdo_lcm_drv")) {
+		ret = scnprintf(buf, PAGE_SIZE,
+			"panel_name=%s\n", mtkfb_lcm_name);
+	}
+
+	return ret;
 }
 
 static DEVICE_ATTR(mtk_fb_hbm, 0644, mtkfb_get_hbm, mtkfb_set_hbm);
