@@ -561,9 +561,8 @@ CONFIG_HZ=250
 
 CONFIG_SECURITY_SELINUX_BOOTPARAM=y
 
-# selene KSU fix: KSU-Next execve hook uses the sys_enter tracepoint
-# (no kprobes on this tree); without FTRACE_SYSCALLS the hook never
-# attaches, the manager never gets its [ksu_driver] fd -> Unsupported.
+# Retain FTRACE_SYSCALLS from the tested Zenith configuration.
+# xxKSU uses KSU_TAMPER_SYSCALL_TABLE on this legacy Linux 4.14 target.
 CONFIG_FTRACE_SYSCALLS=y
 CONFIG_CPU_FREQ_MTK=y
 CONFIG_KSU=y
