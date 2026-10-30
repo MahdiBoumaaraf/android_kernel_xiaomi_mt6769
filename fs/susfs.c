@@ -766,6 +766,13 @@ out_copy_to_user:
 void susfs_spoof_uname(struct new_utsname* tmp) {
 	unsigned seq;
 
+	/* Preserve the real uname until userspace configures a spoofed value.
+	 * Otherwise Android first-stage init reads an empty kernel release and
+	 * reboots straight into the bootloader.
+	 */
+	if (!static_branch_unlikely(&susfs_is_uname_spoof_buffer_set))
+		return;
+
 	do {
 		seq = read_seqbegin(&susfs_uname_seqlock);
 		strscpy(tmp->release, my_uname.release, __NEW_UTS_LEN);
