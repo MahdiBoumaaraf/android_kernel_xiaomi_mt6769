@@ -506,7 +506,7 @@ CONFIG_CRYPTO_ZSTD=y
 CONFIG_LOCALVERSION="-Zenith-s-ker000nl"
 # CONFIG_LOCALVERSION_AUTO is not set
 
-# --- xxKSU syscall-table hooks + Zenith SuSFS 2.3.0 + NoMount 2.2.0 ---
+# --- Zenith SuSFS 2.3.0 + NoMount 2.2.0 (KSU fork selected by builder) ---
 # KSU and SuSFS are configured below; keep only one definition per option.
 
 # --- SquashFS ---
@@ -561,16 +561,13 @@ CONFIG_HZ=250
 
 CONFIG_SECURITY_SELINUX_BOOTPARAM=y
 
-# Retain FTRACE_SYSCALLS from the tested Zenith configuration.
-# xxKSU uses KSU_TAMPER_SYSCALL_TABLE on this legacy Linux 4.14 target.
+# Retain FTRACE_SYSCALLS for the tested KernelSU-Next manual-hook integration.
+# xxKSU build action switches the hook mode in its temporary checkout.
 CONFIG_FTRACE_SYSCALLS=y
 CONFIG_CPU_FREQ_MTK=y
 CONFIG_KSU=y
-# CONFIG_KSU_MANUAL_HOOK is not set
+CONFIG_KSU_MANUAL_HOOK=y
 # CONFIG_KSU_KPROBES_HOOK is not set
-CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
-# CONFIG_KSU_HACK_ARM64_BRANCH_LINK is not set
-CONFIG_KSU_LSM_SECURITY_HOOKS=y
 CONFIG_KSU_SUSFS=y
 # CONFIG_KSU_SUSFS_SUS_PATH is not set
 CONFIG_KSU_SUSFS_SUS_MOUNT=y
