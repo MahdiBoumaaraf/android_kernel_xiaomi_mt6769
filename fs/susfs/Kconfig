@@ -8,7 +8,7 @@ config KSU_SUSFS
     default n
     help
       Build fs/susfs.c and enable its existing VFS hooks on this kernel.
-      KernelSU-Next must also install the Zenith-specific integration patch.
+      The selected KernelSU fork must also install the matching Zenith integration bridge.
 
 config KSU_SUSFS_SUS_MOUNT
     bool "Hide selected mounts"
