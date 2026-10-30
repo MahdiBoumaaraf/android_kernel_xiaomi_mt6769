@@ -28,6 +28,7 @@
 #include <linux/sched/task.h>
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #include <linux/susfs_def.h>
+#include <linux/jump_label.h>
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
 #include "pnode.h"
@@ -35,7 +36,7 @@
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 extern bool susfs_is_current_ksu_domain(void);
-extern bool susfs_is_sdcard_android_data_decrypted;
+extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;
 
 #define CL_COPY_MNT_NS BIT(25) /* used by copy_mnt_ns() */
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
@@ -1154,7 +1155,7 @@ vfs_kern_mount(struct file_system_type *type, int flags, const char *name, void 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	// - We will just stop checking for ksu process if /sdcard/Android is accessible,
 	//   for the sake of performance
-	if (!READ_ONCE(susfs_is_sdcard_android_data_decrypted) && susfs_is_current_ksu_domain()) {
+	if (static_branch_likely(&susfs_is_sdcard_android_data_not_decrypted) && susfs_is_current_ksu_domain()) {
 		mnt = susfs_alloc_non_unshare_ksu_vfsmnt(name ?: "none");
 		goto bypass_orig_flow;
 	}
@@ -1220,7 +1221,7 @@ static struct mount *clone_mnt(struct mount *old, struct dentry *root,
 	bool is_mnt_ksu_unshared = false;
 	// - We will just stop checking for ksu process if /sdcard/Android is accessible,
 	//   for the sake of performance
-	if (READ_ONCE(susfs_is_sdcard_android_data_decrypted)) {
+	if (!static_branch_likely(&susfs_is_sdcard_android_data_not_decrypted)) {
 		goto skip_checking_for_ksu_proc;
 	}
 

@@ -506,23 +506,8 @@ CONFIG_CRYPTO_ZSTD=y
 CONFIG_LOCALVERSION="-Zenith-s-ker000nl"
 # CONFIG_LOCALVERSION_AUTO is not set
 
-# --- KernelSU-Next (v3.3.0-legacy-susfs) ---
-# 4.14 icin MANUEL hook: KSU Kconfig i kprobes/tracepoint hook u icin
-# "should not be used on kernel below 5.10" diyor.
-CONFIG_KSU=y
-
-# --- SuSFS (cekirdek tarafi v2.2.0 NON-GKI, agacta hazir geldi) ---
-CONFIG_KSU_SUSFS=y
-CONFIG_KSU_SUSFS_SUS_PATH=y
-CONFIG_KSU_SUSFS_SUS_MOUNT=y
-CONFIG_KSU_SUSFS_SUS_KSTAT=y
-CONFIG_KSU_SUSFS_SUS_MAP=y
-CONFIG_KSU_SUSFS_TRY_UMOUNT=y
-CONFIG_KSU_SUSFS_SPOOF_UNAME=y
-CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
-CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-# CONFIG_KSU_SUSFS_ENABLE_LOG is not set
+# --- Zenith SuSFS 2.3.0 + NoMount 2.2.0 (KSU fork selected by builder) ---
+# KSU and SuSFS are configured below; keep only one definition per option.
 
 # --- SquashFS ---
 CONFIG_SQUASHFS=y
@@ -576,8 +561,19 @@ CONFIG_HZ=250
 
 CONFIG_SECURITY_SELINUX_BOOTPARAM=y
 
-# selene KSU fix: KSU-Next execve hook uses the sys_enter tracepoint
-# (no kprobes on this tree); without FTRACE_SYSCALLS the hook never
-# attaches, the manager never gets its [ksu_driver] fd -> Unsupported.
+# Retain FTRACE_SYSCALLS for the tested KernelSU-Next manual-hook integration.
+# xxKSU build action switches the hook mode in its temporary checkout.
 CONFIG_FTRACE_SYSCALLS=y
 CONFIG_CPU_FREQ_MTK=y
+CONFIG_KSU=y
+CONFIG_KSU_MANUAL_HOOK=y
+# CONFIG_KSU_KPROBES_HOOK is not set
+CONFIG_KSU_SUSFS=y
+# CONFIG_KSU_SUSFS_SUS_PATH is not set
+CONFIG_KSU_SUSFS_SUS_MOUNT=y
+CONFIG_KSU_SUSFS_SUS_KSTAT=y
+CONFIG_KSU_SUSFS_SUS_MAP=y
+CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+# CONFIG_KSU_SUSFS_OPEN_REDIRECT is not set
+# CONFIG_KSU_SUSFS_ENABLE_LOG is not set

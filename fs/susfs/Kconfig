@@ -1,0 +1,53 @@
+# Zenith local integration for the existing fs/susfs.c VFS patches.
+# Keep these definitions out of the external KernelSU-Next repository.
+menu "Zenith SuSFS integration"
+
+config KSU_SUSFS
+    bool "Enable Zenith SuSFS integration"
+    depends on KSU && THREAD_INFO_IN_TASK
+    default n
+    help
+      Build fs/susfs.c and enable its existing VFS hooks on this kernel.
+      The selected KernelSU fork must also install the matching Zenith integration bridge.
+
+config KSU_SUSFS_SUS_MOUNT
+    bool "Hide selected mounts"
+    depends on KSU_SUSFS
+    default n
+
+config KSU_SUSFS_SUS_KSTAT
+    bool "Spoof file stat information"
+    depends on KSU_SUSFS
+    default n
+
+config KSU_SUSFS_SUS_MAP
+    bool "Hide selected memory mappings"
+    depends on KSU_SUSFS
+    default n
+
+config KSU_SUSFS_SUS_PATH
+    bool "Hide selected paths (may conflict with NoMount rules)"
+    depends on KSU_SUSFS
+    default n
+
+config KSU_SUSFS_SPOOF_UNAME
+    bool "Spoof uname"
+    depends on KSU_SUSFS
+    default n
+
+config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+    bool "Spoof /proc/cmdline or /proc/bootconfig"
+    depends on KSU_SUSFS
+    default n
+
+config KSU_SUSFS_OPEN_REDIRECT
+    bool "SuSFS open redirection (overlaps with NoMount)"
+    depends on KSU_SUSFS
+    default n
+
+config KSU_SUSFS_ENABLE_LOG
+    bool "Enable SuSFS kernel logging"
+    depends on KSU_SUSFS
+    default n
+
+endmenu
