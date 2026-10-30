@@ -315,5 +315,6 @@ source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
 source "fs/unicode/Kconfig"
 
+source "fs/susfs/Kconfig"
 source "fs/nomount/Kconfig"
 endmenu
