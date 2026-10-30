@@ -506,21 +506,8 @@ CONFIG_CRYPTO_ZSTD=y
 CONFIG_LOCALVERSION="-Zenith-s-ker000nl"
 # CONFIG_LOCALVERSION_AUTO is not set
 
-# --- KernelSU-Next (v3.3.0-legacy-susfs) ---
-# 4.14 icin MANUEL hook: KSU Kconfig i kprobes/tracepoint hook u icin
-# "should not be used on kernel below 5.10" diyor.
-# --- SuSFS (cekirdek tarafi v2.2.0 NON-GKI, agacta hazir geldi) ---
-CONFIG_KSU_SUSFS=y
-CONFIG_KSU_SUSFS_SUS_PATH=y
-CONFIG_KSU_SUSFS_SUS_MOUNT=y
-CONFIG_KSU_SUSFS_SUS_KSTAT=y
-CONFIG_KSU_SUSFS_SUS_MAP=y
-CONFIG_KSU_SUSFS_TRY_UMOUNT=y
-CONFIG_KSU_SUSFS_SPOOF_UNAME=y
-CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
-CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-# CONFIG_KSU_SUSFS_ENABLE_LOG is not set
+# --- KernelSU-Next official legacy + Zenith SuSFS ---
+# KSU and SuSFS are configured below; keep only one definition per option.
 
 # --- SquashFS ---
 CONFIG_SQUASHFS=y
