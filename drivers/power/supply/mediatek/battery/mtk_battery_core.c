@@ -4288,6 +4288,33 @@ void bmd_ctrl_cmd_from_user(void *nl_data, struct fgd_nl_msg_t *ret_msg)
 		else
 			gm.ui_soc = (daemon_ui_soc + 50) / 100;
 
+		/* Zenith SOC experiment (selene only): do not advertise 100%
+		 * before the primary charger reports hardware termination.
+		 * This only changes the displayed SOC, NOT the fuel-gauge
+		 * algorithm, current, voltage or charge termination.
+		 * Revert this entire block after the diagnostic test.
+		 */
+#ifdef CONFIG_TARGET_PRODUCT_SELENECOMMON
+		if (gm.ui_soc >= 100 && upmu_get_rgs_chrdet() != 0 &&
+		    battery_main.BAT_STATUS == POWER_SUPPLY_STATUS_CHARGING) {
+			struct charger_device *primary_charger;
+			bool charge_done = false;
+			int ret;
+
+			primary_charger = get_charger_by_name("primary_chg");
+			if (primary_charger) {
+				ret = charger_dev_is_charging_done(primary_charger,
+								  &charge_done);
+				if (ret == 0 && !charge_done) {
+					gm.ui_soc = 99;
+					if (old_uisoc != 99)
+						bm_err("Zenith SOC EXP: daemon_ui=%d, HW not done; display held at 99%%\n",
+						       daemon_ui_soc);
+				}
+			}
+		}
+#endif
+
 		/* when UISOC changes, check the diff time for smooth */
 		if (old_uisoc != gm.ui_soc) {
 			get_monotonic_boottime(&now_time);
