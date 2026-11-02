@@ -1880,6 +1880,25 @@ static int zenith_eoc_iterm_ma(u8 reg)
 	}
 }
 
+/* Read only non-IRQ configuration/command registers for EOC diagnosis. */
+static int zenith_eoc_append_config_reg(struct smb1351_charger *chip,
+					char *buf, int len, const char *name,
+					u8 reg_addr)
+{
+	u8 reg_val;
+	int rc;
+
+	rc = smb1351_read_reg(chip, reg_addr, &reg_val);
+	if (rc)
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+				 "%s_error=%d\n", name, rc);
+	else
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+				 "%s=0x%02x\n", name, reg_val);
+
+	return len;
+}
+
 static ssize_t zenith_eoc_diag_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
@@ -1942,6 +1961,16 @@ static ssize_t zenith_eoc_diag_show(struct device *dev,
 				 "other_current_ctrl=0x%02x\niterm_ma=%d\n",
 				 reg, zenith_eoc_iterm_ma(reg));
 	}
+
+	/* These registers do not acknowledge latched IRQ events. */
+	len = zenith_eoc_append_config_reg(chip, buf, len,
+					  "reg_05", CHG_STAT_TIMERS_CTRL_REG);
+	len = zenith_eoc_append_config_reg(chip, buf, len,
+					  "reg_0d", STATUS_INT_REG);
+	len = zenith_eoc_append_config_reg(chip, buf, len,
+					  "reg_0e", VARIOUS_FUNC_2_REG);
+	len = zenith_eoc_append_config_reg(chip, buf, len,
+					  "reg_32", CMD_CHG_REG);
 
 	return len;
 }
