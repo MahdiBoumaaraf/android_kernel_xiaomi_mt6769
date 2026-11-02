@@ -2203,9 +2203,36 @@ static int smb1351_is_charging_enabled(struct charger_device *chg_dev, bool *en)
 static int smb1351_is_charging_done(struct charger_device *chg_dev, bool *done)
 {
 	struct smb1351_charger *chip = dev_get_drvdata(&chg_dev->dev);
+	bool hw_done;
+	u8 status;
+	int rc;
 
-	*done = chip->batt_full;
-	pr_err("charging is %s\n", chip->batt_full ? "done" : "not done");
+	if (!done)
+		return -EINVAL;
+
+	/* Never report an EOC cached from a previous cable connection. */
+	*done = false;
+	if (!upmu_get_rgs_chrdet() || chip->otg_enable) {
+		WRITE_ONCE(chip->batt_full, false);
+		return 0;
+	}
+
+	/*
+	 * IRQ_C may not be delivered on all boards. STATUS_4 is a
+	 * read-only status register; polling it does not acknowledge
+	 * the latched IRQ events in registers 0x40..0x47.
+	 */
+	rc = smb1351_read_reg(chip, STATUS_4_REG, &status);
+	if (rc)
+		return rc;
+
+	hw_done = !!(status & STATUS_DONE_BIT);
+	if (READ_ONCE(chip->batt_full) != hw_done)
+		pr_info("hardware EOC changed to %u (STATUS_4=0x%02x)\n",
+			hw_done, status);
+
+	WRITE_ONCE(chip->batt_full, hw_done);
+	*done = hw_done;
 	return 0;
 }
 
