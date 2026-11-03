@@ -514,9 +514,6 @@ struct smb1351_charger {
 	bool			battery_missing;
 	bool			resume_completed;
 	bool			irq_waiting;
-	/* Temporary Zenith EOC diagnostic; counts IRQ handler invocations. */
-	u32			zenith_eoc_irq_count;
-	bool			zenith_eoc_diag_registered;
 	struct work_struct	apsd_update_work;
 	struct delayed_work	chg_hvdcp_det_work;
 	struct delayed_work	hvdcp_500_mode_check_work;
@@ -1517,7 +1514,6 @@ static irqreturn_t smb1351_chg_stat_handler(int irq, void *dev_id)
 	union power_supply_propval val;
 
 	mutex_lock(&chip->irq_complete);
-	chip->zenith_eoc_irq_count++;
 
 	power_supply_get_property(chip->usb_psy,
 			POWER_SUPPLY_PROP_VOLTAGE_NOW, &val);
@@ -1850,132 +1846,6 @@ static int smb1351_parse_dt(struct smb1351_charger *chip)
 	return 0;
 }
 
-/*
- * Zenith temporary EOC diagnostic (read-only sysfs).
- *
- * Deliberately avoid IRQ status registers (0x40..0x47): reading them can
- * acknowledge latched events.  No charger configuration is modified.
- */
-static int zenith_eoc_iterm_ma(u8 reg)
-{
-	switch (reg & ITERM_MASK) {
-	case CHG_ITERM_70MA:
-		return 70;
-	case CHG_ITERM_100MA:
-		return 100;
-	case CHG_ITERM_200MA:
-		return 200;
-	case CHG_ITERM_300MA:
-		return 300;
-	case CHG_ITERM_400MA:
-		return 400;
-	case CHG_ITERM_500MA:
-		return 500;
-	case CHG_ITERM_600MA:
-		return 600;
-	case CHG_ITERM_700MA:
-		return 700;
-	default:
-		return -1;
-	}
-}
-
-/* Read only non-IRQ configuration/command registers for EOC diagnosis. */
-static int zenith_eoc_append_config_reg(struct smb1351_charger *chip,
-					char *buf, int len, const char *name,
-					u8 reg_addr)
-{
-	u8 reg_val;
-	int rc;
-
-	rc = smb1351_read_reg(chip, reg_addr, &reg_val);
-	if (rc)
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "%s_error=%d\n", name, rc);
-	else
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "%s=0x%02x\n", name, reg_val);
-
-	return len;
-}
-
-static ssize_t zenith_eoc_diag_show(struct device *dev,
-				   struct device_attribute *attr, char *buf)
-{
-	struct smb1351_charger *chip = dev_get_drvdata(dev);
-	int rc, len = 0;
-	u8 reg;
-
-	if (!chip)
-		return -ENODEV;
-
-	len += scnprintf(buf + len, PAGE_SIZE - len,
-			 "batt_full=%u\nirq_number=%d\nirq_handler_count=%u\n",
-			 READ_ONCE(chip->batt_full) ? 1 : 0,
-			 chip->client->irq,
-			 READ_ONCE(chip->zenith_eoc_irq_count));
-
-	rc = smb1351_read_reg(chip, STATUS_4_REG, &reg);
-	if (rc) {
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "status_4_error=%d\n", rc);
-	} else {
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "status_4=0x%02x\nhw_done=%u\n"
-				 "hw_chg_state=0x%x\nhw_hold_off=%u\n"
-				 "hw_chg_enabled=%u\n",
-				 reg, !!(reg & STATUS_DONE_BIT),
-				 reg & STATUS_CHG_MASK,
-				 !!(reg & STATUS_HOLD_OFF_BIT),
-				 !!(reg & STATUS_CHG_EN_STATUS_BIT));
-	}
-
-	rc = smb1351_read_reg(chip, STATUS_3_REG, &reg);
-	if (rc) {
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "status_3_error=%d\n", rc);
-	} else {
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "status_3=0x%02x\nhw_fast_charge=%u\n",
-				 reg, !!(reg & STATUS_CHG_BIT));
-	}
-
-	rc = smb1351_read_reg(chip, CHG_CTRL_REG, &reg);
-	if (rc) {
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "charge_ctrl_error=%d\n", rc);
-	} else {
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "charge_ctrl=0x%02x\niterm_enabled=%u\n"
-				 "auto_recharge_enabled=%u\n",
-				 reg, !(reg & ITERM_EN_BIT),
-				 !(reg & AUTO_RECHG_BIT));
-	}
-
-	rc = smb1351_read_reg(chip, CHG_OTH_CURRENT_CTRL_REG, &reg);
-	if (rc) {
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "other_current_ctrl_error=%d\n", rc);
-	} else {
-		len += scnprintf(buf + len, PAGE_SIZE - len,
-				 "other_current_ctrl=0x%02x\niterm_ma=%d\n",
-				 reg, zenith_eoc_iterm_ma(reg));
-	}
-
-	/* These registers do not acknowledge latched IRQ events. */
-	len = zenith_eoc_append_config_reg(chip, buf, len,
-					  "reg_05", CHG_STAT_TIMERS_CTRL_REG);
-	len = zenith_eoc_append_config_reg(chip, buf, len,
-					  "reg_0d", STATUS_INT_REG);
-	len = zenith_eoc_append_config_reg(chip, buf, len,
-					  "reg_0e", VARIOUS_FUNC_2_REG);
-	len = zenith_eoc_append_config_reg(chip, buf, len,
-					  "reg_32", CMD_CHG_REG);
-
-	return len;
-}
-static DEVICE_ATTR_RO(zenith_eoc_diag);
-
 static int create_debugfs_entries(struct smb1351_charger *chip)
 {
 	struct dentry *ent;
@@ -2210,27 +2080,17 @@ static int smb1351_is_charging_done(struct charger_device *chg_dev, bool *done)
 	if (!done)
 		return -EINVAL;
 
-	/* Never report an EOC cached from a previous cable connection. */
 	*done = false;
 	if (!upmu_get_rgs_chrdet() || chip->otg_enable) {
 		WRITE_ONCE(chip->batt_full, false);
 		return 0;
 	}
 
-	/*
-	 * IRQ_C may not be delivered on all boards. STATUS_4 is a
-	 * read-only status register; polling it does not acknowledge
-	 * the latched IRQ events in registers 0x40..0x47.
-	 */
 	rc = smb1351_read_reg(chip, STATUS_4_REG, &status);
 	if (rc)
 		return rc;
 
 	hw_done = !!(status & STATUS_DONE_BIT);
-	if (READ_ONCE(chip->batt_full) != hw_done)
-		pr_info("hardware EOC changed to %u (STATUS_4=0x%02x)\n",
-			hw_done, status);
-
 	WRITE_ONCE(chip->batt_full, hw_done);
 	*done = hw_done;
 	return 0;
@@ -3298,13 +3158,6 @@ static int smb1351_charger_probe(struct i2c_client *client,
 	schedule_delayed_work(&chip->delay_init_work,
 			msecs_to_jiffies(100));
 
-	/* Best-effort diagnostics: never fail the charger probe. */
-	rc = device_create_file(&client->dev, &dev_attr_zenith_eoc_diag);
-	if (rc)
-		dev_warn(&client->dev, "Zenith EOC sysfs unavailable: %d\n", rc);
-	else
-		chip->zenith_eoc_diag_registered = true;
-
 	pr_err("smb1351_charger_probe:success!\n");
 	return 0;
 }
@@ -3315,9 +3168,6 @@ static int smb1351_charger_remove(struct i2c_client *client)
 	int rc;
 
 	pr_info("%s: remove\n", __func__);
-
-	if (chip->zenith_eoc_diag_registered)
-		device_remove_file(&client->dev, &dev_attr_zenith_eoc_diag);
 
 	_smb1351_enable_hvdcp_det(chip, true);
 	rc = smb1351_enable_volatile_writes(chip);
